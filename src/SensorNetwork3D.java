@@ -225,22 +225,40 @@ public class SensorNetwork3D {
     public void findTrilateratedPoint (Point3D seekedNode, List<Point3D> finalAnchorNeighbours, List<Point3D> anchorNodes,
                                        List<Point3D> foundNodes, List<Double> errors, boolean iterative,
                                        int heuristic) {
-        if (finalAnchorNeighbours.size() == 3) {
+        if (finalAnchorNeighbours.size() == 4) {
             Point3D p1 = finalAnchorNeighbours.get(0);
 
             Point3D p2 = finalAnchorNeighbours.get(1);
 
             Point3D p3 = finalAnchorNeighbours.get(2);
 
-            if (p1 != null && p2 != null && p3 != null) {
+            Point3D p4 = finalAnchorNeighbours.get(3);
+
+            if (p1 != null && p2 != null && p3 != null && p4 != null) {
                 // if all the distances are smaller than the radio range
                 // and the anchor nodes were found (are not null)
                 // make trilateration to find the seeked point
-                Point3D p = Trilaterate(p1, p2, p3);
+                Point3D p = Trilaterate(p1, p2, p3, p4);
 
                 if (p.x <= L && p.x >= 0 && p.y <= L && p.y >= 0) {
                     // the found point has coordinates within the borders of the sensor network
+                    if (Double.isNaN(p.x) || Double.isNaN(p.y)) {
+                        p = Trilaterate(p1, p3, p2, p4);
+                        if (Double.isNaN(p.x) || Double.isNaN(p.y)) {
+                            p = Trilaterate(p2, p1, p3, p4);
+                            if (Double.isNaN(p.x) || Double.isNaN(p.y)) {
+                                p = Trilaterate(p2, p3, p1, p4);
+                                if (Double.isNaN(p.x) || Double.isNaN(p.y)) {
+                                    p = Trilaterate(p3, p1, p2, p4);
+                                    if (Double.isNaN(p.x) || Double.isNaN(p.y)) {
+                                        p = Trilaterate(p3, p2, p1, p4);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (!Double.isNaN(p.x) && !Double.isNaN(p.y)) {
+
                         foundNodes.add(p);
                         // calculate the distance between the real node and the estimated one.
                         errors.add(Distance(p.x, p.y, p.z, seekedNode.x, seekedNode.y, seekedNode.z));
@@ -262,7 +280,7 @@ public class SensorNetwork3D {
     public List<Point3D> findThreeClosestNeighbours (List<Point3D> anchorNeighbours) {
         anchorNeighbours.sort(Comparator.comparing(Point3D::getR));
         List<Point3D> threeClosestNeighbours = anchorNeighbours.stream()
-                .limit(3)
+                .limit(4)
                 .collect(Collectors.toList());
         return threeClosestNeighbours;
     }
@@ -273,7 +291,7 @@ public class SensorNetwork3D {
                         .thenComparing(Point3D::getR));
 
         List<Point3D> threeMostRelevantNeighbours = anchorNeighbours.stream()
-                .limit(3)
+                .limit(4)
                 .collect(Collectors.toList());
 
         return threeMostRelevantNeighbours;
@@ -284,10 +302,14 @@ public class SensorNetwork3D {
         System.out.println("Original: " + "\t" + "Found: ");
 
         for (int i = 0; i < foundNodes.size(); i++) {
-            System.out.println("X: " + String.format("%.1f", seekedNodes.get(i).x) + "\t" +
-                    "Y: " + String.format("%.1f", seekedNodes.get(i).y) + "\t" +
-                    "X: " + String.format("%.1f", foundNodes.get(i).x) + "\t" +
-                    "Y: " + String.format("%.1f", foundNodes.get(i).y));
+            System.out.println(
+                    "X: " + String.format("%.1f", seekedNodes.get(i).x) + "\t" +
+                            "Y: " + String.format("%.1f", seekedNodes.get(i).y) + "\t" +
+                            "Z: " + String.format("%.1f", seekedNodes.get(i).z) + "\t" +
+                            "X: " + String.format("%.1f", foundNodes.get(i).x) + "\t" +
+                            "Y: " + String.format("%.1f", foundNodes.get(i).y) + "\t" +
+                            "Z: " + String.format("%.1f", foundNodes.get(i).z)
+            );
         }
 
         System.out.println("Size of seeked nodes: " + seekedNodes.size());
@@ -362,7 +384,26 @@ public class SensorNetwork3D {
     }
 
 
-    public static Point3D Trilaterate (Point3D p1, Point3D p2, Point3D p3) {
+    public static Point3D Trilaterate (Point3D p1, Point3D p2, Point3D p3, Point3D p4) {
+        /*
+        p1=np.array(distances[0][:3])
+    p2=np.array(distances[1][:3])
+    p3=np.array(distances[2][:3])
+    p4=np.array(distances[3][:3])
+    r1=distances[0][-1]
+    r2=distances[1][-1]
+    r3=distances[2][-1]
+    r4=distances[3][-1]
+    e_x=(p2-p1)/np.linalg.norm(p2-p1)
+    i=np.dot(e_x,(p3-p1))
+    e_y=(p3-p1-(i*e_x))/(np.linalg.norm(p3-p1-(i*e_x)))
+    e_z=np.cross(e_x,e_y)
+    d=np.linalg.norm(p2-p1)
+    j=np.dot(e_y,(p3-p1))
+    x=((r1**2)-(r2**2)+(d**2))/(2*d)
+    y=(((r1**2)-(r3**2)+(i**2)+(j**2))/(2*j))-((i/j)*(x))
+
+         */
         //var ex, ey, ez, i, j, d, a, x, y, z, p4;
         Point3D ex = vector_divide(vector_subtract(p2, p1), norm(vector_subtract(p2, p1)));
         double i = dot(ex, vector_subtract(p3, p1));
@@ -374,16 +415,28 @@ public class SensorNetwork3D {
 
         double x = (sqr(p1.r) - sqr(p2.r) + sqr(d)) / (2 * d);
         double y = (sqr(p1.r) - sqr(p3.r) + sqr(i) + sqr(j)) / (2 * j) - (i / j) * x;
-        double z = Math.sqrt(sqr(p1.r) - sqr(x) - sqr(y));
-
-        Point3D aa = vector_add(p1, vector_add(vector_multiply(ex, x), vector_multiply(ey, y)));
-        Point3D p4a = vector_add(a, vector_multiply(ez, z));
-        Point3D p4b = vector_subtract(a, vector_multiply(ez, z));
-
-        //double xx=(p4a.x+p4b.x)/2;
-        //double yy=(p4a.y+p4b.y)/2;
-        //double zz=(p4a.z+p4b.z)/2;
-
-        return aa;
+        double z1 = Math.sqrt(sqr(p1.r) - sqr(x) - sqr(y));
+/*
+z1=np.sqrt(r1**2-x**2-y**2)
+    z2=np.sqrt(r1**2-x**2-y**2)*(-1)
+    ans1=p1+(x*e_x)+(y*e_y)+(z1*e_z)
+    ans2=p1+(x*e_x)+(y*e_y)+(z2*e_z)
+    dist1=np.linalg.norm(p4-ans1)
+    dist2=np.linalg.norm(p4-ans2)
+    if np.abs(r4-dist1)<np.abs(r4-dist2):
+        return ans1
+    else:
+        return ans2
+ */
+        double z2 = Math.sqrt(sqr(p1.r) - sqr(x) - sqr(y)) * (-1);
+        Point3D ans1 = vector_add(p1, vector_add(vector_add(vector_multiply(ex, x), vector_multiply(ey, y)), vector_multiply(ez, z1)));
+        Point3D ans2 = vector_add(p1, vector_add(vector_add(vector_multiply(ex, x), vector_multiply(ey, y)), vector_multiply(ez, z2)));
+        double distance1 = norm(vector_subtract(p4, ans1));
+        double distance2 = norm(vector_subtract(p4, ans2));
+        if (Math.abs(p4.r - distance1) < Math.abs(p4.r - distance2)) {
+            return ans1;
+        } else {
+            return ans2;
+        }
     }
 }
